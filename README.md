@@ -116,14 +116,16 @@ docker compose -p speedtest restart speedtest-debian-pg
 | `DB_TYPE` / `DB_HOSTNAME` / `DB_NAME` / `DB_USERNAME` / `DB_PASSWORD` | — | 上游自带 | 测速记录数据库（postgresql / mysql / sqlite / mssql） |
 | `ENABLE_STATS` | `false` | 二开新增 | 是否启用在线统计页 `/results/stats.php`（登录密码为 `PASSWORD`） |
 | `PASSWORD` | `password` | 上游自带 | 统计页 / 分享编辑等受保护页面的登录密码 |
-| `TITLE` | `LibreSpeed` | 上游自带 | 页面标题（单语；经典页中文场景建议用 `TITLE_ZH`） |
-| `TITLE_ZH` / `TITLE_EN` | 空 | 二开新增 | 中/英分语言标题（经典页随语言切换）；优先于 `TITLE` |
+| `TITLE` | `LibreSpeed` | 上游自带 | **已废弃**：不再控制页面标题，页面标题只由 `site-config.json` 的 `titleZh`/`titleEn` 决定 |
+| `TITLE_ZH` / `TITLE_EN` | 空 | 二开新增 | **已废弃**：同 `TITLE`，不再控制页面标题（仅历史兼容保留声明） |
 | `FOOTER_NOTICE` / `FOOTER_NOTICE_ZH` / `FOOTER_NOTICE_EN` | 空 | 二开新增 | 页脚通知（中/英） |
 | `MODE` | `standalone` | 上游自带 | 部署模式：`standalone` / `frontend` / `backend` / `dual` |
 | `WEBPORT` | `8080` | 上游自带 | Apache 监听端口 |
 | `USE_NEW_DESIGN` | `false` | 上游自带 | 保持默认即可：首页默认进入经典测速页面（本二开的定制功能均基于该页面） |
 
-> 来源说明：**上游自带** = LibreSpeed v6.0.2 原有变量；**二开新增** = 本仓库新增的变量。`TITLE_ZH`/`TITLE_EN`/`FOOTER_NOTICE_*` 仅在没有挂载 `site-config.json` 时作为品牌回退值使用，正常定制请直接配置 `site-config.json`。
+> 来源说明：**上游自带** = LibreSpeed v6.0.2 原有变量；**二开新增** = 本仓库新增的变量。
+> 标题相关变量（`TITLE`/`TITLE_ZH`/`TITLE_EN`）**已废弃**：页面标题唯一来源是 `site-config.json` 的 `titleZh`/`titleEn`（未挂载时使用镜像内置空白模板），设置这些变量不再影响页面标题。
+> `FOOTER_NOTICE`/`FOOTER_NOTICE_ZH`/`FOOTER_NOTICE_EN` 行为**未变**：仍作为页脚通知回退值使用，正常定制请直接配置 `site-config.json`。
 
 ### 详细文档
 

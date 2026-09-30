@@ -15,7 +15,7 @@ docker/site/                ← 部署目录（可整体替换/复制给不同�
 ```
 
 镜像内置一份**通用默认模板**（`docker/default-site/`，无任何学校文案与图片）：
-未挂载部署目录时站点按通用模板运行（标题为环境变量 `TITLE` 等生成，无校徽、默认 favicon）。
+未挂载部署目录时站点按通用模板运行（标题来自内置空白模板 `site-config.json` 的 `titleZh`/`titleEn`，无校徽、默认 favicon）。
 给新学校部署时：复制 `docker/default-site/` 为你的学校目录并按下方说明填写，然后挂载它。
 
 ### site-config.json 结构

@@ -101,21 +101,49 @@ if [[ "$MODE" == "frontend" || "$MODE" == "dual" ||  "$MODE" == "standalone" ]];
     sed -i "s/var SPEEDTEST_SERVERS = \\[/var SPEEDTEST_SERVERS = \"$SERVER_LIST_URL_ESCAPED\";\\n\\t\\t\\/\\*/" /var/www/html/index-classic.html
   fi
 
-  # 标题：经典页支持中英（TITLE / TITLE_ZH / TITLE_EN）；新版与设计入口保留单语 hero
-  TZ_RAW="${TITLE_ZH:-$TITLE}"
-  TITLE_ZH_EFFECTIVE="${TZ_RAW//$'\r'/}"
-  TITLE_ZH_EFFECTIVE="${TITLE_ZH_EFFECTIVE//$'\n'/ }"
-  TE_RAW="${TITLE_EN:-$TITLE}"
-  TITLE_EN_EFFECTIVE="${TE_RAW//$'\r'/}"
-  TITLE_EN_EFFECTIVE="${TITLE_EN_EFFECTIVE//$'\n'/ }"
-
-  if [ -n "$TITLE_ZH_EFFECTIVE" ]; then
-    TITLE_VISIBLE="$TITLE_ZH_EFFECTIVE"
-  elif [ -n "$TITLE_EN_EFFECTIVE" ]; then
-    TITLE_VISIBLE="$TITLE_EN_EFFECTIVE"
-  else
-    TITLE_VISIBLE="LibreSpeed"
+  # 标题：经典页支持中英（规则乙：唯一来源 = site-config.json 的 default.titleZh / default.titleEn）
+  # 读取顺序：/var/www/html/site/site-config.json（SiteConfig 段稍后就位：优先软链挂载目录
+  # /speedtest-site，否则复制镜像内置模板 /speedtest/docker-site，两种情况文件都存在）→
+  # 挂载目录 /speedtest-site/site-config.json → 镜像内置模板 /speedtest/docker-site/site-config.json。
+  # TITLE / TITLE_ZH / TITLE_EN 环境变量已废弃：设置它们不再影响页面标题。
+  SC_TT_FILE=/var/www/html/site/site-config.json
+  if [ ! -f "$SC_TT_FILE" ] && [ -f /speedtest-site/site-config.json ]; then
+    SC_TT_FILE=/speedtest-site/site-config.json
   fi
+  if [ ! -f "$SC_TT_FILE" ] && [ -f /speedtest/docker-site/site-config.json ]; then
+    SC_TT_FILE=/speedtest/docker-site/site-config.json
+  fi
+  # 用 PHP 解析 JSON（容器内有 PHP 8）：titleZh 缺省回退 name，titleEn 缺省回退 titleZh，
+  # 与 site-config.php 的归一化规则一致；值内换行替换为空格（单行注入场景）。
+  SC_TITLES=$(php -r '
+    $file = $argv[1];
+    // 兜底：镜像内置空白模板值（与 docker/default-site/site-config.json 保持一致）
+    $zh = "LibreSpeed 网络测速"; $en = "LibreSpeed Speed Test";
+    $raw = @file_get_contents($file);
+    if ($raw !== false) {
+      $j = json_decode($raw, true);
+      if (is_array($j) && isset($j["default"]) && is_array($j["default"])) {
+        $d = $j["default"];
+        $name = isset($d["name"]) && is_string($d["name"]) ? trim($d["name"]) : "";
+        if (isset($d["titleZh"]) && is_string($d["titleZh"]) && trim($d["titleZh"]) !== "") {
+          $zh = $d["titleZh"];
+        } elseif ($name !== "") {
+          $zh = $name;
+        }
+        if (isset($d["titleEn"]) && is_string($d["titleEn"]) && trim($d["titleEn"]) !== "") {
+          $en = $d["titleEn"];
+        } else {
+          $en = $zh;
+        }
+      }
+    }
+    $zh = trim(str_replace(array("\r", "\n"), " ", $zh));
+    $en = trim(str_replace(array("\r", "\n"), " ", $en));
+    printf("%s\n%s", $zh, $en);
+  ' "$SC_TT_FILE")
+  TITLE_ZH_EFFECTIVE=$(printf '%s\n' "$SC_TITLES" | sed -n '1p')
+  TITLE_EN_EFFECTIVE=$(printf '%s\n' "$SC_TITLES" | sed -n '2p')
+  TITLE_VISIBLE="$TITLE_ZH_EFFECTIVE"
 
   TITLE_ZH_HTML=$(html_escape "$TITLE_ZH_EFFECTIVE")
   TITLE_EN_HTML=$(html_escape "$TITLE_EN_EFFECTIVE")
@@ -135,14 +163,13 @@ if [[ "$MODE" == "frontend" || "$MODE" == "dual" ||  "$MODE" == "standalone" ]];
     sed -i "s|<title>LibreSpeed</title>|<title>$TT_ESC</title>|g" /var/www/html/index.html
   fi
 
-  if [ -n "$TITLE$TITLE_ZH$TITLE_EN" ]; then
-    TITLE_MODERN_RAW="${TITLE:-${TITLE_ZH:-$TITLE_EN}}"
-    TITLE_MODERN_ONE=${TITLE_MODERN_RAW//$'\r'/}
-    TITLE_MODERN_ONE=${TITLE_MODERN_ONE//$'\n'/ }
-    TITLE_MODERN_HTML=$(html_escape "$TITLE_MODERN_ONE")
-    TITLE_MODERN_ESC=$(sed_escape "$TITLE_MODERN_HTML")
-    sed -i "s/<title>LibreSpeed - Free and Open Source Speedtest<\\/title>/<title>$TITLE_MODERN_ESC - Free and Open Source Speedtest<\\/title>/g; s/<h1>Free and Open Source Speedtest\\.<\\/h1>/<h1>$TITLE_MODERN_ESC<\\/h1>/g" /var/www/html/index-modern.html
-  fi
+  # 新版页（html lang="en"）使用英文标题 titleEn；总是从 site-config.json 注入（含空白模板场景）
+  TITLE_MODERN_RAW="$TITLE_EN_EFFECTIVE"
+  TITLE_MODERN_ONE=${TITLE_MODERN_RAW//$'\r'/}
+  TITLE_MODERN_ONE=${TITLE_MODERN_ONE//$'\n'/ }
+  TITLE_MODERN_HTML=$(html_escape "$TITLE_MODERN_ONE")
+  TITLE_MODERN_ESC=$(sed_escape "$TITLE_MODERN_HTML")
+  sed -i "s/<title>LibreSpeed - Free and Open Source Speedtest<\\/title>/<title>$TITLE_MODERN_ESC - Free and Open Source Speedtest<\\/title>/g; s/<h1>Free and Open Source Speedtest\\.<\\/h1>/<h1>$TITLE_MODERN_ESC<\\/h1>/g" /var/www/html/index-modern.html
 
   # Support legacy EMAIL env var as fallback for GDPR_EMAIL
   if [ -z "$GDPR_EMAIL" ] && [ ! -z "$EMAIL" ]; then
@@ -218,15 +245,24 @@ if [ -d /var/www/html ]; then
     echo "SiteConfig: synced site/icon.png -> /var/www/html/favicon.ico"
   fi
 
-  # 站点配置：若无挂载 site-config.json，用环境变量生成默认配置（向后兼容纯环境变量部署）
+  # 站点配置：若无挂载 site-config.json，生成默认配置（向后兼容纯环境变量部署）。
+  # 规则乙：标题字段不再读取 TITLE/TITLE_ZH/TITLE_EN（已废弃），改为引用镜像内置空白模板
+  # docker/default-site/site-config.json 的标题，确保与未挂载场景的页面标题一致；
+  # 页脚字段仍按原样由 FOOTER_NOTICE_* 环境变量提供（页脚行为未变）。
   if [ ! -f /var/www/html/site/site-config.json ]; then
-    echo "SiteConfig: no site-config.json mounted, generating defaults from env vars"
-    php -r '$t = getenv("TITLE_ZH") ?: getenv("TITLE") ?: "LibreSpeed";
-$e = getenv("TITLE_EN") ?: $t;
-$fz = getenv("FOOTER_NOTICE_ZH") ?: getenv("FOOTER_NOTICE") ?: "";
-$fe = getenv("FOOTER_NOTICE_EN") ?: $fz;
-$d = array("default" => array("name" => $t, "titleZh" => $t, "titleEn" => $e, "footerZh" => $fz, "footerEn" => $fe, "logo" => "", "icon" => ""), "privacyEmail" => "", "ipSegments" => array());
-file_put_contents("/var/www/html/site/site-config.json", json_encode($d, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));'
+    echo "SiteConfig: no site-config.json mounted, generating defaults (title from built-in template, footer from env)"
+    php -r '
+      $tpl = @file_get_contents("/speedtest/docker-site/site-config.json");
+      $tplObj = $tpl !== false ? json_decode($tpl, true) : null;
+      $t = (is_array($tplObj) && isset($tplObj["default"]) && is_array($tplObj["default"]))
+          ? $tplObj["default"] : array("titleZh" => "LibreSpeed 网络测速", "titleEn" => "LibreSpeed Speed Test");
+      $tz = isset($t["titleZh"]) && is_string($t["titleZh"]) && $t["titleZh"] !== "" ? $t["titleZh"] : "LibreSpeed 网络测速";
+      $te = isset($t["titleEn"]) && is_string($t["titleEn"]) && trim($t["titleEn"]) !== "" ? $t["titleEn"] : $tz;
+      $fz = getenv("FOOTER_NOTICE_ZH") ?: getenv("FOOTER_NOTICE") ?: "";
+      $fe = getenv("FOOTER_NOTICE_EN") ?: $fz;
+      $d = array("default" => array("name" => $tz, "titleZh" => $tz, "titleEn" => $te, "footerZh" => $fz, "footerEn" => $fe, "logo" => "", "icon" => ""), "privacyEmail" => "", "ipSegments" => array());
+      file_put_contents("/var/www/html/site/site-config.json", json_encode($d, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+    '
   fi
 
   # 站点配置健康检查：写错配置不阻塞启动，校验结果输出到容器启动日志

@@ -15,6 +15,8 @@ services:
       - MODE=standalone
       - WEBPORT=8080
       - USE_NEW_DESIGN=false
+      # 规则乙：TITLE 已废弃，设置它不应影响页面标题（标题只来自 site-config.json）
+      - 'TITLE=Grüße "Tempo" ''Österreich'''
     ports:
       - "18180:8080"
 
@@ -27,6 +29,9 @@ services:
       - WEBPORT=8080
       - USE_NEW_DESIGN=true
       - 'TITLE=Grüße "Tempo" ''Österreich'''
+    volumes:
+      # 挂载自定义 site-config.json，验证挂载后标题唯一来源为该文件
+      - ./e2e/fixtures/custom-site:/speedtest-site:ro
     ports:
       - "18185:8080"
 

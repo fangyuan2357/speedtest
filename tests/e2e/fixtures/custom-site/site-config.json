@@ -1,0 +1,16 @@
+{
+  "_readme": "e2e 测试 fixture：自定义站点配置（标题含 umlaut/引号等特殊字符）。仅用于规则乙测试——验证挂载后页面标题唯一来源为 site-config.json 的 titleZh/titleEn，而非 TITLE 环境变量。",
+  "default": {
+    "name": "E2E Custom Site",
+    "titleZh": "Grüße 中文「引号」測速站",
+    "titleEn": "Grüße \"Tempo\" 'Österreich' - Custom Site",
+    "footerZh": "",
+    "footerEn": "",
+    "logo": "",
+    "icon": ""
+  },
+  "privacyEmail": "",
+  "ipSegments": [],
+  "recentColumns": ["time", "clientIp", "dl", "ul"],
+  "serverList": []
+}

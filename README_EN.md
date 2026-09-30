@@ -115,14 +115,16 @@ Notes:
 | `DB_TYPE` / `DB_HOSTNAME` / `DB_NAME` / `DB_USERNAME` / `DB_PASSWORD` | — | upstream | Telemetry database (postgresql / mysql / sqlite / mssql) |
 | `ENABLE_STATS` | `false` | **this fork** | Enable the online stats page `/results/stats.php` (login via `PASSWORD`) |
 | `PASSWORD` | `password` | upstream | Login password for protected pages |
-| `TITLE` | `LibreSpeed` | upstream | Page title (single language) |
-| `TITLE_ZH` / `TITLE_EN` | empty | **this fork** | Bilingual titles (used by the classic page language switch); take precedence over `TITLE` |
+| `TITLE` | `LibreSpeed` | upstream | **Deprecated**: no longer controls the page title; the title comes only from `titleZh`/`titleEn` in `site-config.json` |
+| `TITLE_ZH` / `TITLE_EN` | empty | **this fork** | **Deprecated**: same as `TITLE`, no longer controls the page title (kept for compatibility only) |
 | `FOOTER_NOTICE` / `FOOTER_NOTICE_ZH` / `FOOTER_NOTICE_EN` | empty | **this fork** | Footer notice (ZH/EN) |
 | `MODE` | `standalone` | upstream | Deployment mode: `standalone` / `frontend` / `backend` / `dual` |
 | `WEBPORT` | `8080` | upstream | Apache listen port |
 | `USE_NEW_DESIGN` | `false` | upstream | Keep the default: the classic test page is the entry (all fork customization targets this page) |
 
-> Origin note: **upstream** = LibreSpeed v6.0.2 variables; **this fork** = added by this repository. `TITLE_ZH`/`TITLE_EN`/`FOOTER_NOTICE_*` are only fallback values when no `site-config.json` is mounted — use `site-config.json` for normal customization.
+> Origin note: **upstream** = LibreSpeed v6.0.2 variables; **this fork** = added by this repository.
+> Title variables (`TITLE`/`TITLE_ZH`/`TITLE_EN`) are **deprecated**: the page title comes exclusively from `titleZh`/`titleEn` in `site-config.json` (the built-in blank template is used when no `site-config.json` is mounted); these variables no longer affect the page title.
+> `FOOTER_NOTICE`/`FOOTER_NOTICE_ZH`/`FOOTER_NOTICE_EN` are **unchanged**: they still act as footer notice fallback values — use `site-config.json` for normal customization.
 
 ### Further reading
 

@@ -32,7 +32,7 @@ services:
     restart: always
     environment:
       MODE: standalone
-      #TITLE: "LibreSpeed"
+      #TITLE: "LibreSpeed" # Deprecated: no longer controls the page title; the title comes from site-config.json (titleZh/titleEn)
       #TELEMETRY: "false"
       #ENABLE_ID_OBFUSCATION: "false"
       #REDACT_IP_ADDRESSES: "false"
@@ -56,7 +56,7 @@ The test can be accessed on port 80.
 
 Here's a list of additional environment variables available in this mode:
 
-* __`TITLE`__: Title of your speed test. Default value: `LibreSpeed`
+* __`TITLE`__: Deprecated. No longer controls the page title. The page title is sourced exclusively from `site-config.json` (`default.titleZh` / `default.titleEn`); when no `site-config.json` is mounted, the built-in blank template values are used. Kept only for backwards compatibility.
 * __`USE_NEW_DESIGN`__: When set to `true`, enables the new modern frontend design. When set to `false` (default), uses the classic design. The design can also be switched using URL parameters (`?design=new` or `?design=old`). Default value: `false`
 * __`SERVER_LIST_URL`__: When set, both frontend designs load their server list from this URL instead of the generated or mounted `server-list.json`. This is useful if you want the containerized frontend to consume a remote shared server list.
 * __`TELEMETRY`__: Whether to enable telemetry or not. If enabled, you maybe want your data to be persisted. See below. Default value: `false`
