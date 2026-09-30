@@ -59,11 +59,46 @@ header {
   }
 }
 
+/** 机构横向 logo：PC 与移动端自适应宽度与高度上限 */
+header .site-brand-logo {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(100%, 52rem);
+  max-height: clamp(3.2rem, 12vw, 6.4rem);
+  margin: 0 auto;
+  object-fit: contain;
+}
+
+@media screen and (max-width: 800px) {
+  header .site-brand-logo {
+    max-height: clamp(2.8rem, 16vw, 4.8rem);
+    max-width: 100%;
+  }
+}
+
 /* Position the source code link */
 
 footer {
   margin: auto auto 0 auto;
   padding: 5rem;
+
+  & > p.site-footer-notice {
+    margin: 0 auto 2rem auto;
+    max-width: 48rem;
+    font-size: 1.4rem;
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: -0.05rem;
+    color: var(--secondary-text-color);
+    text-align: center;
+  }
+
+  & > p.site-footer-notice:empty,
+  & > p.site-footer-notice.empty {
+    display: none;
+    margin: 0;
+  }
 
   & > p.source a {
     font-size: 1.6rem;

@@ -36,6 +36,9 @@ rm -rf /var/www/html/*
 # Copy frontend files
 cp /speedtest/*.js /var/www/html/
 
+# 站点配置系统：动态配置 API（配置由 site/ 目录挂载提供，启动时生成默认配置）
+cp /speedtest/site-config.php /var/www/html/
+
 # Copy design switch files
 cp /speedtest/config.json /var/www/html/
 cp /speedtest/design-switch.js /var/www/html/
@@ -98,17 +101,49 @@ if [[ "$MODE" == "frontend" || "$MODE" == "dual" ||  "$MODE" == "standalone" ]];
     sed -i "s/var SPEEDTEST_SERVERS = \\[/var SPEEDTEST_SERVERS = \"$SERVER_LIST_URL_ESCAPED\";\\n\\t\\t\\/\\*/" /var/www/html/index-classic.html
   fi
 
-  # Replace title placeholders if TITLE is set
-  if [ ! -z "$TITLE" ]; then
-    TITLE_ONE_LINE=${TITLE//$'\r'/}
-    TITLE_ONE_LINE=${TITLE_ONE_LINE//$'\n'/ }
-    TITLE_HTML_ESCAPED=$(html_escape "$TITLE_ONE_LINE")
-    TITLE_ESCAPED=$(sed_escape "$TITLE_HTML_ESCAPED")
-    sed -i "s/<title>LibreSpeed<\\/title>/<title>$TITLE_ESCAPED<\\/title>/g; s/<h1>LibreSpeed<\\/h1>/<h1>$TITLE_ESCAPED<\\/h1>/g" /var/www/html/index-classic.html
-    sed -i "s/<title>LibreSpeed<\\/title>/<title>$TITLE_ESCAPED<\\/title>/g" /var/www/html/index.html
-    sed -i "s/<title>LibreSpeed - Free and Open Source Speedtest<\\/title>/<title>$TITLE_ESCAPED - Free and Open Source Speedtest<\\/title>/g; s/<h1>Free and Open Source Speedtest\\.<\\/h1>/<h1>$TITLE_ESCAPED<\\/h1>/g" /var/www/html/index-modern.html
+  # 标题：经典页支持中英（TITLE / TITLE_ZH / TITLE_EN）；新版与设计入口保留单语 hero
+  TZ_RAW="${TITLE_ZH:-$TITLE}"
+  TITLE_ZH_EFFECTIVE="${TZ_RAW//$'\r'/}"
+  TITLE_ZH_EFFECTIVE="${TITLE_ZH_EFFECTIVE//$'\n'/ }"
+  TE_RAW="${TITLE_EN:-$TITLE}"
+  TITLE_EN_EFFECTIVE="${TE_RAW//$'\r'/}"
+  TITLE_EN_EFFECTIVE="${TITLE_EN_EFFECTIVE//$'\n'/ }"
+
+  if [ -n "$TITLE_ZH_EFFECTIVE" ]; then
+    TITLE_VISIBLE="$TITLE_ZH_EFFECTIVE"
+  elif [ -n "$TITLE_EN_EFFECTIVE" ]; then
+    TITLE_VISIBLE="$TITLE_EN_EFFECTIVE"
+  else
+    TITLE_VISIBLE="LibreSpeed"
   fi
-  
+
+  TITLE_ZH_HTML=$(html_escape "$TITLE_ZH_EFFECTIVE")
+  TITLE_EN_HTML=$(html_escape "$TITLE_EN_EFFECTIVE")
+  TITLE_VISIBLE_HTML=$(html_escape "$TITLE_VISIBLE")
+  TZ_ESC=$(sed_escape "$TITLE_ZH_HTML")
+  TE_ESC=$(sed_escape "$TITLE_EN_HTML")
+  TV_ESC=$(sed_escape "$TITLE_VISIBLE_HTML")
+  TITLE_PAGE_HTML=$(html_escape "$TITLE_VISIBLE")
+  TT_ESC=$(sed_escape "$TITLE_PAGE_HTML")
+
+  CLASSIC_IC=/var/www/html/index-classic.html
+  if [ -f "$CLASSIC_IC" ]; then
+    sed -i "s|__LIBRESPEED_TITLE_ZH__|$TZ_ESC|g;s|__LIBRESPEED_TITLE_EN__|$TE_ESC|g;s|__LIBRESPEED_TITLE_VISIBLE__|$TV_ESC|g" "$CLASSIC_IC"
+    sed -i "s|<title>LibreSpeed</title>|<title>$TT_ESC</title>|g" "$CLASSIC_IC"
+  fi
+  if [ -f /var/www/html/index.html ]; then
+    sed -i "s|<title>LibreSpeed</title>|<title>$TT_ESC</title>|g" /var/www/html/index.html
+  fi
+
+  if [ -n "$TITLE$TITLE_ZH$TITLE_EN" ]; then
+    TITLE_MODERN_RAW="${TITLE:-${TITLE_ZH:-$TITLE_EN}}"
+    TITLE_MODERN_ONE=${TITLE_MODERN_RAW//$'\r'/}
+    TITLE_MODERN_ONE=${TITLE_MODERN_ONE//$'\n'/ }
+    TITLE_MODERN_HTML=$(html_escape "$TITLE_MODERN_ONE")
+    TITLE_MODERN_ESC=$(sed_escape "$TITLE_MODERN_HTML")
+    sed -i "s/<title>LibreSpeed - Free and Open Source Speedtest<\\/title>/<title>$TITLE_MODERN_ESC - Free and Open Source Speedtest<\\/title>/g; s/<h1>Free and Open Source Speedtest\\.<\\/h1>/<h1>$TITLE_MODERN_ESC<\\/h1>/g" /var/www/html/index-modern.html
+  fi
+
   # Support legacy EMAIL env var as fallback for GDPR_EMAIL
   if [ -z "$GDPR_EMAIL" ] && [ ! -z "$EMAIL" ]; then
     echo "WARNING: EMAIL env var is deprecated, please use GDPR_EMAIL instead" >&2
@@ -127,7 +162,84 @@ if [[ "$MODE" == "frontend" || "$MODE" == "dual" ||  "$MODE" == "standalone" ]];
       fi
     done
   fi
+
+  # 页脚：经典页中英（FOOTER_NOTICE / FOOTER_NOTICE_ZH / FOOTER_NOTICE_EN）；新版仍为单行
+  FZ_RAW="${FOOTER_NOTICE_ZH:-$FOOTER_NOTICE}"
+  FOOTER_ZH_EFFECTIVE="${FZ_RAW//$'\r'/}"
+  FOOTER_ZH_EFFECTIVE="${FOOTER_ZH_EFFECTIVE//$'\n'/ }"
+  FE_RAW="${FOOTER_NOTICE_EN:-$FOOTER_NOTICE}"
+  FOOTER_EN_EFFECTIVE="${FE_RAW//$'\r'/}"
+  FOOTER_EN_EFFECTIVE="${FOOTER_EN_EFFECTIVE//$'\n'/ }"
+
+  FZ_HTML=$(html_escape "$FOOTER_ZH_EFFECTIVE")
+  FE_HTML=$(html_escape "$FOOTER_EN_EFFECTIVE")
+  FZ_ESC=$(sed_escape "$FZ_HTML")
+  FE_ESC=$(sed_escape "$FE_HTML")
+  FV_HTML=$(html_escape "$FOOTER_ZH_EFFECTIVE")
+  FV_ESC=$(sed_escape "$FV_HTML")
+
+  if [ -f "$CLASSIC_IC" ]; then
+    sed -i "s|__LIBRESPEED_FOOTER_ZH__|$FZ_ESC|g;s|__LIBRESPEED_FOOTER_EN__|$FE_ESC|g;s|__LIBRESPEED_FOOTER_VISIBLE__|$FV_ESC|g" "$CLASSIC_IC"
+  fi
+
+  FOOTER_MODERN_RAW="${FOOTER_NOTICE:-${FOOTER_NOTICE_ZH:-$FOOTER_NOTICE_EN}}"
+  FOOTER_MODERN_ONE=${FOOTER_MODERN_RAW//$'\r'/}
+  FOOTER_MODERN_ONE=${FOOTER_MODERN_ONE//$'\n'/ }
+  if [ -n "$FOOTER_MODERN_ONE" ]; then
+    FOOTER_MODERN_HTML=$(html_escape "$FOOTER_MODERN_ONE")
+    FOOTER_MODERN_ESC=$(sed_escape "$FOOTER_MODERN_HTML")
+    if [ -f /var/www/html/index-modern.html ]; then
+      sed -i "s|__LIBRESPEED_FOOTER_NOTICE__|$FOOTER_MODERN_ESC|g" /var/www/html/index-modern.html
+    fi
+  else
+    if [ -f /var/www/html/index-modern.html ]; then
+      sed -i 's|__LIBRESPEED_FOOTER_NOTICE__||g' /var/www/html/index-modern.html
+    fi
+  fi
 fi
+
+# 站点配置：校徽/图标资源 + site-config.json（便于 Docker 卷替换）
+# 优先使用挂载目录 /speedtest-site（与 compose 中 docker/site 对应）；否则使用镜像内 /speedtest/docker-site
+if [ -d /var/www/html ]; then
+  rm -rf /var/www/html/site 2>/dev/null || true
+  if [ -d /speedtest-site ] && [ -n "$(ls -A /speedtest-site 2>/dev/null)" ]; then
+    echo "SiteConfig: using volume mount /speedtest-site -> /var/www/html/site"
+    ln -sfn /speedtest-site /var/www/html/site
+  elif [ -d /speedtest/docker-site ] && [ -n "$(ls -A /speedtest/docker-site 2>/dev/null)" ]; then
+    echo "SiteConfig: copying defaults from /speedtest/docker-site"
+    mkdir -p /var/www/html/site
+    cp -a /speedtest/docker-site/. /var/www/html/site/
+  else
+    echo "SiteConfig: no docker/site assets found, skipping /var/www/html/site"
+  fi
+  # 兼容直接请求 /favicon.ico 的浏览器与爬虫：用站点 icon 覆盖（PNG 内容，多数客户端可识别）
+  if [ -f /var/www/html/site/icon.png ]; then
+    cp -f /var/www/html/site/icon.png /var/www/html/favicon.ico
+    echo "SiteConfig: synced site/icon.png -> /var/www/html/favicon.ico"
+  fi
+
+  # 站点配置：若无挂载 site-config.json，用环境变量生成默认配置（向后兼容纯环境变量部署）
+  if [ ! -f /var/www/html/site/site-config.json ]; then
+    echo "SiteConfig: no site-config.json mounted, generating defaults from env vars"
+    php -r '$t = getenv("TITLE_ZH") ?: getenv("TITLE") ?: "LibreSpeed";
+$e = getenv("TITLE_EN") ?: $t;
+$fz = getenv("FOOTER_NOTICE_ZH") ?: getenv("FOOTER_NOTICE") ?: "";
+$fe = getenv("FOOTER_NOTICE_EN") ?: $fz;
+$d = array("default" => array("name" => $t, "titleZh" => $t, "titleEn" => $e, "footerZh" => $fz, "footerEn" => $fe, "logo" => "", "icon" => ""), "privacyEmail" => "", "ipSegments" => array());
+file_put_contents("/var/www/html/site/site-config.json", json_encode($d, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));'
+  fi
+
+  # 站点配置健康检查：写错配置不阻塞启动，校验结果输出到容器启动日志
+  if [ -f /var/www/html/site/site-config.json ]; then
+    php /speedtest/site-config-cli.php validate /var/www/html/site/site-config.json
+  fi
+
+  # 若 site-config.json 配置了 serverList（多测速节点），覆盖默认的本机节点列表（重启生效）
+  if [ -f /var/www/html/site/site-config.json ]; then
+    php /speedtest/site-config-cli.php serverlist /var/www/html/site/site-config.json /var/www/html/server-list.json
+  fi
+fi
+
 # Configure design preference via config.json
 if [ "$USE_NEW_DESIGN" == "true" ]; then
   sed -i 's/"useNewDesign": false/"useNewDesign": true/' /var/www/html/config.json
@@ -137,6 +249,14 @@ fi
 if [[ "$TELEMETRY" == "true" && ("$MODE" == "frontend" || "$MODE" == "standalone" || "$MODE" == "dual") ]]; then
   cp -r /speedtest/results /var/www/html/results
   sed -i 's/telemetry_level": ".*"/telemetry_level": "basic"/' /var/www/html/settings.json
+
+  # 统计页开关：默认禁用 stats.php（查看测速记录用；ENABLE_STATS=true 时启用，登录密码为 PASSWORD）
+  if [ "$ENABLE_STATS" == "true" ]; then
+    echo "Stats: stats.php enabled (ENABLE_STATS=true)"
+  else
+    rm -f /var/www/html/results/stats.php
+    echo "Stats: stats.php disabled (ENABLE_STATS=false)"
+  fi
 
   if [ "$MODE" == "frontend" ]; then
     mkdir /var/www/html/backend

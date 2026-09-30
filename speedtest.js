@@ -43,6 +43,19 @@
     - 4: test finished. You can run it again by calling start() if you want.
  */
 
+/**
+ * 从测速节点 URL 取出主机名（含非默认端口），供测速记录展示节点域名或地址。
+ * @param {string} serverUrl 节点后端地址
+ * @returns {string}
+ */
+function speedtestServerHost(serverUrl) {
+  try {
+    return new URL(serverUrl, location.href).host;
+  } catch (e) {
+    return "";
+  }
+}
+
 function Speedtest() {
   this._serverList = []; //when using multiple points of test, this is a list of test points
   this._selectedServer = null; //when using multiple points of test, this is the selected server
@@ -356,15 +369,14 @@ Speedtest.prototype = {
         this._selectedServer.server + this._selectedServer.pingURL;
       this._settings.url_getIp =
         this._selectedServer.server + this._selectedServer.getIpURL;
+      var nodeRecord = {
+        server: this._selectedServer.name,
+        host: speedtestServerHost(this._selectedServer.server)
+      };
       if (typeof this._originalExtra !== "undefined") {
-        this._settings.telemetry_extra = JSON.stringify({
-          server: this._selectedServer.name,
-          extra: this._originalExtra
-        });
-      } else
-        this._settings.telemetry_extra = JSON.stringify({
-          server: this._selectedServer.name
-        });
+        nodeRecord.extra = this._originalExtra;
+      }
+      this._settings.telemetry_extra = JSON.stringify(nodeRecord);
     }
     this._state = 3;
     this.worker.postMessage("start " + JSON.stringify(this._settings));

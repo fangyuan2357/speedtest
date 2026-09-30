@@ -1,208 +1,57 @@
-## this is a docker compose file used to test all scenarios
-## do not use it in production
+# 单校部署示例：PostgreSQL（存测速记录） + LibreSpeed 前端（本镜像）。
+#
+# 使用步骤：
+#   1. 修改下方所有 ChangeMe_* 占位密码（两处 DB 密码必须一致）；
+#   2. 定制站点信息：把 docker/default-site/ 复制到自定义目录（如 docker/site/），
+#      参照 docker/site-config.example.json 填写 site-config.json 并放入校徽文件；
+#      （未放置任何配置文件时会使用镜像内置的空白通用模板）
+#   3. 启动：docker compose -p speedtest up -d --build
+#      重启使配置生效：docker compose -p speedtest restart speedtest-debian-pg
+#
+# 注意：pg_data 数据卷首次初始化后，再修改 POSTGRES_PASSWORD 不会改变已存在数据库的密码。
+
 x-shared:
-  speedtest-service: &speedtest-service
-    environment:
-      - PASSWORD=gimmeTheStats1337
-      - GDPR_EMAIL=test@example.com
-      - ENABLE_ID_OBFUSCATION=true
-      - MODE=standalone
-      - REDACT_IP_ADDRESSES=true
-      - TELEMETRY=true
+  speedtest-env: &speedtest-env
+    # 统计页 Login 密码（仅 ENABLE_STATS=true 时使用）。学校名称、页脚、校徽不在此处，只放挂载目录
+    PASSWORD: "ChangeMe_Stats_123!"
+    TELEMETRY: "true"
+    # 需要在线查看测速记录时改为 "true"（访问 /results/stats.php，登录密码为上面的 PASSWORD）
+    ENABLE_STATS: "false"
 
 services:
-  ###################### POSTGRESQL ################################
   pg:
     image: postgres:alpine
     environment:
-      POSTGRES_PASSWORD: Not4SecureProduction
-      POSTGRES_USER: librespeed
+      POSTGRES_PASSWORD: "ChangeMe_DB_123!"
+      POSTGRES_USER: "librespeed"
+      TZ: "Asia/Shanghai"
+      PGTZ: "Asia/Shanghai"
     volumes:
-      # mount init script from source to create database tables
       - ../../results/telemetry_postgresql.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
   speedtest-debian-pg:
     build:
       context: ../..
       dockerfile: Dockerfile
-    environment: &env_vars_pg
-      - PASSWORD=gimmeTheStats1337
-      - DB_HOSTNAME=pg
-      - DB_NAME=librespeed
-      - DB_PASSWORD=Not4SecureProduction
-      - DB_TYPE=postgresql
-      - DB_USERNAME=librespeed
-      - GDPR_EMAIL=test@example.com
-      - ENABLE_ID_OBFUSCATION=true
-      - MODE=standalone
-      - REDACT_IP_ADDRESSES=true
-      - TELEMETRY=true
+    environment:
+      <<: *speedtest-env
+      DB_HOSTNAME: "pg"
+      DB_NAME: "librespeed"
+      # 必须与上方 pg 服务的 POSTGRES_PASSWORD 保持一致
+      DB_PASSWORD: "ChangeMe_DB_123!"
+      DB_TYPE: "postgresql"
+      DB_USERNAME: "librespeed"
+      TZ: "Asia/Shanghai"
     ports:
       - 9123:8080
-
-  speedtest-alpine-pg:
-    build:
-      context: ../..
-      dockerfile: Dockerfile.alpine
-    environment: *env_vars_pg
-    ports:
-      - 9124:8080
-
-  ####################### MYSQL ##############################
-
-  mysql:
-    image: mysql:lts
-    environment:
-      MYSQL_ROOT_PASSWORD: Not4SecureProduction
-      MYSQL_USER: librespeed
-      MYSQL_PASSWORD: Not4SecureProduction
-      MYSQL_DATABASE: librespeed
     volumes:
-      # mount init script from source to create database tables
-      - ../../results/telemetry_mysql.sql:/docker-entrypoint-initdb.d/01-init.sql
-
-  speedtest-debian-mysql:
-    # check at http://localhost:9125/results/sanitycheck.php
-    build:
-      context: ../..
-      dockerfile: Dockerfile
-    environment: &env_vars_mysql
-      - PASSWORD=gimmeTheStats1337
-      - DB_HOSTNAME=mysql
-      - DB_NAME=librespeed
-      - DB_PASSWORD=Not4SecureProduction
-      - DB_TYPE=mysql
-      - DB_USERNAME=librespeed
-      - GDPR_EMAIL=test@example.com
-      - ENABLE_ID_OBFUSCATION=true
-      - MODE=standalone
-      - REDACT_IP_ADDRESSES=true
-      - TELEMETRY=true
-    ports:
-      - 9125:8080
-  speedtest-alpine-mysql:
-    build:
-      context: ../..
-      dockerfile: Dockerfile.alpine
-    environment: *env_vars_mysql
-    ports:
-      - 9126:8080
-
-  ####################### MSSQL ##############################
-
-  mssql:
-    image: mcr.microsoft.com/mssql/server:2022-latest
-    environment:
-      - ACCEPT_EULA=Y
-      - SA_PASSWORD=Not4SecureProduction1337
-      - MSSQL_PID=Express
-    healthcheck:
-      test:
-        ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $$SA_PASSWORD -C -Q 'SELECT 1' || exit 1"]
-      interval: 10s
-      retries: 5
-      start_period: 30s
-
-  mssql-init:
-    image: mcr.microsoft.com/mssql/server:2022-latest
-    depends_on:
-      mssql:
-        condition: service_healthy
-    environment:
-      - SA_PASSWORD=Not4SecureProduction1337
-    volumes:
-      - ../../results/telemetry_mssql.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
-    command: >
-      bash -c '
-        echo "Waiting for MSSQL to be ready...";
-        until /opt/mssql-tools18/bin/sqlcmd -S mssql -U sa -P "$$SA_PASSWORD" -C -Q "SELECT 1"; do
-          sleep 1;
-        done;
-        echo "Running init scripts...";
-        for f in /docker-entrypoint-initdb.d/*.sql; do
-          echo "Executing $$f...";
-          /opt/mssql-tools18/bin/sqlcmd -S mssql -U sa -P "$$SA_PASSWORD" -C -i "$$f";
-        done;
-        echo "Initialization complete!";
-      '
-
-  speedtest-debian-mssql:
-    build:
-      context: ../..
-      dockerfile: Dockerfile
-    environment: &env_vars_mssql
-      - PASSWORD=gimmeTheStats1337
-      - DB_HOSTNAME=mssql
-      - DB_NAME=librespeed
-      - DB_PASSWORD=Not4SecureProduction1337
-      - DB_TYPE=mssql
-      - DB_USERNAME=sa
-      - GDPR_EMAIL=test@example.com
-      - ENABLE_ID_OBFUSCATION=true
-      - MODE=standalone
-      - REDACT_IP_ADDRESSES=true
-      - TELEMETRY=true
-    ports:
-      - 9130:8080
-
-  speedtest-alpine-mssql:
-    build:
-      context: ../..
-      dockerfile: Dockerfile.alpine
-    environment: *env_vars_mssql
-    ports:
-      - 9131:8080
-
-  ################ SQLITE ####################################
-
-  speedtest-debian-sqlite:
-    # check at http://localhost:9125/results/sanitycheck.php
-    build:
-      context: ../..
-      dockerfile: Dockerfile
-    environment: &env_vars_sqlite
-      - PASSWORD=gimmeTheStats1337
-      - GDPR_EMAIL=test@example.com
-      - ENABLE_ID_OBFUSCATION=true
-      - MODE=standalone
-      - REDACT_IP_ADDRESSES=true
-      - TELEMETRY=true
-    ports:
-      - 9127:8080
-
-  speedtest-alpine-sqlite:
-    build:
-      context: ../..
-      dockerfile: Dockerfile.alpine
-    environment: *env_vars_sqlite
-    ports:
-      - 9128:8080
-
-  speedtest-alpine-sqlite-dual:
-    <<: *speedtest-service
-    build:
-      context: ../..
-      dockerfile: Dockerfile.alpine
-    environment:
-      - MODE=dual
-
-    volumes:
-      - ./servers.json:/servers.json:ro
-    ports:
-      - 9129:8080
-
-  ##############  TEST CONTAINER  ###############################################################
-  test-container:
-    image: alpine
+      # 学校定制目录（只读挂载）。镜像内没有校名和校徽；换学校时替换这个目录后重启容器
+      - ../../docker/site:/speedtest-site:ro
     depends_on:
       - pg
-      - mysql
-      - mssql-init
-      - speedtest-alpine-mysql
-      - speedtest-alpine-pg
-      - speedtest-alpine-mssql
-    volumes:
-      - ./test-script.sh:/test-script.sh
-    command:
-      - sh
-      - /test-script.sh
+    restart: unless-stopped
+
+volumes:
+  pg_data:

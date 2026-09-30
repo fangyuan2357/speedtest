@@ -6,7 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
   <meta name="description"
     content="Free and Open Source Speedtest. Run it right now in your browser, or self-host on a PHP, Golang, Rust or Node server. License: LGPL." />
-  <link rel="shortcut icon" href="images/favicon.svg" />
+  <link rel="icon" type="image/png" href="site-config.php?action=icon" sizes="32x32" />
+  <link rel="icon" type="image/png" href="site-config.php?action=icon" sizes="192x192" />
+  <link rel="apple-touch-icon" href="site-config.php?action=icon" />
   <script type="text/javascript" src="speedtest.js"></script>
   <script type="text/javascript">
     // Set this to a different URL to load the server list from another location.
@@ -19,7 +21,7 @@
 
 <body>
   <header>
-    <img src="images/logo.svg" alt="LibreSpeed" />
+    <img class="site-brand-logo" alt="" decoding="async" style="display:none" />
   </header>
   <main>
     <h1>Free and Open Source Speedtest.</h1>
@@ -74,6 +76,7 @@
     </button>
   </main>
   <footer>
+    <p id="site-footer-notice" class="site-footer-notice">__LIBRESPEED_FOOTER_NOTICE__</p>
     <p class="source">
       <a href="https://github.com/librespeed/speedtest">source code</a>
     </p>
@@ -147,6 +150,7 @@
     </section>
     <button id="close-privacy">Close</button>
   </dialog>
+  <script type="text/javascript" src="site-config.js" defer></script>
 </body>
 
 </html>

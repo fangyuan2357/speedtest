@@ -314,3 +314,81 @@ function getLatestSpeedtestUsers()
 
     return $rows;
 }
+
+/**
+ * 查询最近 N 天内、按时间倒序的若干条测速记录（用于经典页「最近测速」表格）。
+ *
+ * @param int $limit 最大条数（1–100）
+ * @param int $days  回溯天数（1–365）
+ * @return array<int, array<string, mixed>>|false 失败时 false；无数据时空数组
+ */
+function getRecentSpeedtestUsersLastWeek($limit = 10, $days = 7)
+{
+    $pdo = getPdo();
+    if (!($pdo instanceof PDO)) {
+        return false;
+    }
+
+    require TELEMETRY_SETTINGS_FILE;
+
+    $limit = max(1, min(100, (int) $limit));
+    $days = max(1, min(365, (int) $days));
+
+    try {
+        switch ($db_type) {
+            case 'sqlite':
+                $sql = 'SELECT `timestamp` AS ts, ip, dl, ul, ping, jitter, extra FROM speedtest_users
+                    WHERE datetime(`timestamp`) >= datetime(\'now\', \'-' . $days . ' days\')
+                    ORDER BY datetime(`timestamp`) DESC
+                    LIMIT ' . $limit;
+                break;
+
+            case 'postgresql':
+                $sql = sprintf(
+                    'SELECT "timestamp" AS ts, ip, dl, ul, ping, jitter, extra FROM speedtest_users
+                    WHERE "timestamp" >= NOW() - INTERVAL \'%d days\'
+                    ORDER BY "timestamp" DESC
+                    LIMIT %d',
+                    $days,
+                    $limit
+                );
+                break;
+
+            case 'mysql':
+                $sql = sprintf(
+                    'SELECT `timestamp` AS ts, ip, dl, ul, ping, jitter, extra FROM speedtest_users
+                    WHERE `timestamp` >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d DAY)
+                    ORDER BY `timestamp` DESC
+                    LIMIT %d',
+                    $days,
+                    $limit
+                );
+                break;
+
+            case 'mssql':
+                $sql = sprintf(
+                    'SELECT TOP (%d) [timestamp] AS ts, ip, dl, ul, ping, jitter, extra FROM speedtest_users
+                    WHERE [timestamp] >= DATEADD(day, -%d, SYSUTCDATETIME())
+                    ORDER BY [timestamp] DESC',
+                    $limit,
+                    $days
+                );
+                break;
+
+            default:
+                return false;
+        }
+
+        $stmt = $pdo->query($sql);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($rows as $i => $row) {
+            $rows[$i]['timestamp'] = isset($row['ts']) ? (string) $row['ts'] : '';
+            unset($rows[$i]['ts']);
+        }
+
+        return $rows;
+    } catch (Exception $e) {
+        return false;
+    }
+}

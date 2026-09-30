@@ -9,3 +9,10 @@ test-results/
 results/speedtest_telemetry.db
 results/speedtest_telemetry.db-shm
 results/speedtest_telemetry.db-wal
+
+# 本地打包产物与备份（勿提交）
+*.tar
+docker/test/*.bak
+
+# 学校定制部署目录（含具体学校的校徽/文案；如需公开请自行脱敏或改放私有仓库）
+docker/site/

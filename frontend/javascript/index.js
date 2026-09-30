@@ -136,6 +136,31 @@ async function applySettingsJSON() {
 }
 
 /**
+ * 把配置里的节点地址解析成浏览器可请求的绝对地址。
+ * 以单个 / 开头的路径表示当前站点自身后端，拼上页面 origin。
+ * 以 // 开头的协议相对地址留给测速引擎补当前页面的协议。
+ * @param {string} server 配置中的 server 字段
+ * @returns {string}
+ */
+function resolveServerUrl(server) {
+  if (typeof server !== "string" || server === "") {
+    return server;
+  }
+  if (server.charAt(0) === "/" && server.charAt(1) !== "/") {
+    return location.origin + server;
+  }
+  return server;
+}
+
+/**
+ * 打开多节点模式，让测速请求带上 cors=true。
+ * 只配置一个远程节点时也必须打开，否则跨域后端不返回 CORS 头，速度会一直为 0。
+ */
+function enableCrossOriginTest() {
+  testState.speedtest.setParameter("mpot", true);
+}
+
+/**
  * Load server list from the configured source and populate the dropdown
  */
 async function applyServerListJSON() {
@@ -151,42 +176,32 @@ async function applyServerListJSON() {
       return console.error("Server list is empty or malformed");
     }
 
+    servers.forEach((server) => {
+      if (server && typeof server.server === "string") {
+        server.server = resolveServerUrl(server.server);
+      }
+    });
     testState.servers = servers;
+    enableCrossOriginTest();
 
-    // If there's only one server, just show it. No reachability checks needed.
+    // 单个节点不做延迟竞速，直接使用配置项。mpot 已打开，远程节点也会带 cors=true。
     if (servers.length === 1) {
       populateDropdown(servers);
       return;
     }
 
-    // For multiple servers: first run the built-in selection (which pings servers
-    // and annotates them with pingT). Only then populate the dropdown so that
-    // dead servers don't appear.
+    // 多个节点：探测延迟并预选最低的一个。下拉始终列出全部配置节点，供手动切换。
     testState.speedtest.addTestPoints(servers);
     testState.speedtest.selectServer((bestServer) => {
-      const aliveServers = testState.servers.filter((s) => {
-        // Keep servers that responded to ping (pingT !== -1).
-        if (s.pingT !== -1) return true;
-        // Also keep protocol-relative servers ("//...") as a defensive fallback.
-        // LibreSpeed normalizes them to the page protocol before pinging, so they
-        // are normally treated like any other server and get a real pingT value.
-        return typeof s.server === "string" && s.server.startsWith("//");
-      });
-
-      // Prefer to show only reachable servers, but if none are reachable,
-      // fall back to the full list so users can still pick a server manually.
-      if (aliveServers.length > 0) {
-        testState.servers = aliveServers;
-      }
       populateDropdown(testState.servers);
-
 
       if (bestServer) {
         selectServer(bestServer);
       } else {
-        alert(
-          "Can't reach any of the speedtest servers! But you're on this page. Something weird is going on with your network."
+        console.warn(
+          "None of the configured speedtest servers responded to ping; keeping the first configured node."
         );
+        selectServer(testState.servers[0]);
       }
     });
   } catch (error) {
@@ -209,13 +224,13 @@ function populateDropdown(servers) {
   serverList.classList.remove("active");
   serverList.innerHTML = "";
 
-  // If we have only a single server, just show it
+  // Single server: select it immediately, but still render the dropdown entry
+  // so the server selector stays visible and expandable.
   if (servers.length === 1) {
-    serverSelector.classList.add("single-server");
     selectServer(servers[0]);
-    return;
+  } else {
+    serverSelector.classList.add("active");
   }
-  serverSelector.classList.add("active");
 
   // Make the dropdown open and close (hook only once)
   if (serverSelector.dataset.hooked !== "1") {

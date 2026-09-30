@@ -1,0 +1,22 @@
+{
+  "default": {
+    "name": "示例机构",
+    "titleZh": "示例机构网络测速",
+    "titleEn": "Example Institution Network Speed Test",
+    "footerZh": "本测速服务器由示例机构提供",
+    "footerEn": "Speed test server provided by Example Institution.",
+    "logo": "logo.png",
+    "icon": "icon.png"
+  },
+  "privacyEmail": "netadmin@example.edu.cn",
+  "ipSegments": [
+    { "cidr": "192.0.2.0/24", "zh": "校园网 A 区", "en": "Campus Network A" },
+    { "cidr": "198.51.100.128/25", "zh": "校园网 B 区", "en": "Campus Network B" },
+    { "cidr": "2001:db8:1::/48", "zh": "校园网 IPv6", "en": "Campus IPv6 Network" }
+  ],
+  "recentColumns": ["time", "clientIp", "node", "dl", "ul", "ping", "jitter"],
+  "serverList": [
+    { "name": "重庆测速点", "server": "http://speedtest-chq-001.sec.edu.cn/backend" },
+    { "name": "本机节点", "server": "/backend" }
+  ]
+}

@@ -1,88 +1,125 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-Hans" data-theme="light" data-lang="zh">
 
 <head>
-	<link rel="shortcut icon" href="favicon.ico">
+	<link rel="icon" type="image/png" href="site-config.php?action=icon" sizes="32x32" />
+	<link rel="icon" type="image/png" href="site-config.php?action=icon" sizes="192x192" />
+	<link rel="apple-touch-icon" href="site-config.php?action=icon" />
 	<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, user-scalable=no" />
 	<meta charset="UTF-8" />
 	<script type="text/javascript" src="speedtest.js"></script>
+	<script type="text/javascript" src="classic-chrome.js"></script>
 	<script type="text/javascript">
 		function I(i) { return document.getElementById(i); }
 
-		//LIST OF TEST SERVERS. Leave empty if you're doing a standalone installation. See documentation for details
-		var SPEEDTEST_SERVERS = [
-			/*{	//this server doesn't actually exist, remove it
-				name:"Example Server 1", //user friendly name for the server
-				server:"//test1.mydomain.com/", //URL to the server. // at the beginning will be replaced with http:// or https:// automatically
-				dlURL:"backend/garbage.php",  //path to download test on this server (garbage.php or replacement)
-				ulURL:"backend/empty.php",  //path to upload test on this server (empty.php or replacement)
-				pingURL:"backend/empty.php",  //path to ping/jitter test on this server (empty.php or replacement)
-				getIpURL:"backend/getIP.php"  //path to getIP on this server (getIP.php or replacement)
-			},
-			{	//this server doesn't actually exist, remove it
-				name:"Example Server 2", //user friendly name for the server
-				server:"//test2.example.com/", //URL to the server. // at the beginning will be replaced with http:// or https:// automatically
-				dlURL:"garbage.php",  //path to download test on this server (garbage.php or replacement)
-				ulURL:"empty.php",  //path to upload test on this server (empty.php or replacement)
-				pingURL:"empty.php",  //path to ping/jitter test on this server (empty.php or replacement)
-				getIpURL:"getIP.php"  //path to getIP on this server (getIP.php or replacement)
-			}*/
-			//add other servers here, comma separated
-		];
+		// 测速节点由容器启动时根据 site-config.json 的 serverList 生成 server-list.json
+		var SPEEDTEST_SERVERS = [];
 
 		//INITIALIZE SPEEDTEST
 		var s = new Speedtest(); //create speed test object
 		s.setParameter("telemetry_level", "basic"); //enable basic telemetry (for results sharing)
 
-		//SERVER AUTO SELECTION
-		function initServers() {
-			if (SPEEDTEST_SERVERS.length == 0) { //standalone installation
-				//just make the UI visible
-				I("loading").className = "hidden";
-				I("serverArea").style.display = "none";
-				I("testWrapper").className = "visible";
-				initUI();
-			} else { //multiple servers
-				var noServersAvailable = function () {
-					I("message").innerHTML = "No servers available";
-				}
-				var runServerSelect = function () {
-					s.selectServer(function (server) {
-						if (server != null) { //at least 1 server is available
-							I("loading").className = "hidden"; //hide loading message
-							//populate server list for manual selection
-							for (var i = 0; i < SPEEDTEST_SERVERS.length; i++) {
-								if (SPEEDTEST_SERVERS[i].pingT == -1) continue;
-								var option = document.createElement("option");
-								option.value = i;
-								option.textContent = SPEEDTEST_SERVERS[i].name;
-								if (SPEEDTEST_SERVERS[i] === server) option.selected = true;
-								I("server").appendChild(option);
-							}
-							//show test UI
-							I("testWrapper").className = "visible";
-							initUI();
-						} else { //no servers are available, the test cannot proceed
-							noServersAvailable();
-						}
-					});
-				}
-				if (typeof SPEEDTEST_SERVERS === "string") {
-					//need to fetch list of servers from specified URL
-					s.loadServerList(SPEEDTEST_SERVERS, function (servers) {
-						if (servers == null) { //failed to load server list
-							noServersAvailable();
-						} else { //server list loaded
-							SPEEDTEST_SERVERS = servers;
-							runServerSelect();
-						}
-					});
-				} else {
-					//hardcoded server list
-					s.addTestPoints(SPEEDTEST_SERVERS);
-					runServerSelect();
+		/**
+		 * 把配置里以 / 开头的节点地址补成当前页面的绝对地址。
+		 * 协议相对地址（//host）留给测速引擎补协议。
+		 * @param {string} server 配置中的 server 字段
+		 * @returns {string}
+		 */
+		function resolveServerUrl(server) {
+			if (typeof server !== "string" || server === "") return server;
+			if (server.charAt(0) === "/" && server.charAt(1) !== "/") return location.origin + server;
+			return server;
+		}
+
+		/**
+		 * 没有节点列表时按单机后端测速，并隐藏节点下拉。
+		 */
+		function useStandalone() {
+			SPEEDTEST_SERVERS = [];
+			I("loading").className = "hidden";
+			I("serverArea").style.display = "none";
+			I("testWrapper").className = "visible";
+			initUI();
+		}
+
+		/**
+		 * 把全部配置节点写入下拉框，并标出当前选中项。
+		 * @param {Object} selected 当前选中的节点对象
+		 */
+		function populateServerSelect(selected) {
+			var select = I("server");
+			while (select.firstChild) select.removeChild(select.firstChild);
+			for (var i = 0; i < SPEEDTEST_SERVERS.length; i++) {
+				var option = document.createElement("option");
+				option.value = String(i);
+				option.textContent = SPEEDTEST_SERVERS[i].name;
+				if (SPEEDTEST_SERVERS[i] === selected) option.selected = true;
+				select.appendChild(option);
+			}
+			I("serverArea").style.display = SPEEDTEST_SERVERS.length > 1 ? "" : "none";
+		}
+
+		/**
+		 * 隐藏加载提示并显示测速面板。
+		 */
+		function showTestUi() {
+			I("loading").className = "hidden";
+			I("testWrapper").className = "visible";
+			initUI();
+		}
+
+		/**
+		 * 应用节点列表：补全相对地址、打开跨域参数，并预选延迟最低的节点。
+		 * @param {Array<Object>} servers server-list.json 解析结果
+		 */
+		function applyServerList(servers) {
+			if (!servers || !servers.length) {
+				useStandalone();
+				return;
+			}
+			for (var i = 0; i < servers.length; i++) {
+				if (servers[i] && typeof servers[i].server === "string") {
+					servers[i].server = resolveServerUrl(servers[i].server);
 				}
 			}
+			SPEEDTEST_SERVERS = servers;
+			s.setParameter("mpot", true);
+			if (servers.length === 1) {
+				s.setSelectedServer(servers[0]);
+				populateServerSelect(servers[0]);
+				showTestUi();
+				return;
+			}
+			s.addTestPoints(servers);
+			s.selectServer(function (server) {
+				var chosen = server || servers[0];
+				if (!server) s.setSelectedServer(chosen);
+				populateServerSelect(chosen);
+				showTestUi();
+			});
+		}
+
+		/**
+		 * 读取 server-list.json 并初始化节点下拉。
+		 */
+		function initServers() {
+			var xhr = new XMLHttpRequest();
+			xhr.onload = function () {
+				if (xhr.status < 200 || xhr.status >= 300) {
+					useStandalone();
+					return;
+				}
+				try {
+					applyServerList(JSON.parse(xhr.responseText));
+				} catch (e) {
+					useStandalone();
+				}
+			};
+			xhr.onerror = function () {
+				useStandalone();
+			};
+			xhr.open("GET", "server-list.json");
+			xhr.send();
 		}
 
 		var meterBk = /Trident.*rv:(\d+\.\d+)/i.test(navigator.userAgent) ? "#EAEAEA" : "#80808040";
@@ -135,35 +172,34 @@
 				s.abort();
 				data = null;
 				I("startStopBtn").className = "";
-				I("startStopBtn").setAttribute("aria-label", "Start");
+				if (window.ClassicChrome) ClassicChrome.setMainButtonLabel("start");
+				else I("startStopBtn").setAttribute("aria-label", "Start");
 				I("server").disabled = false;
 				initUI();
 			} else {
 				//test is not running, begin
 				I("startStopBtn").className = "running";
-				I("startStopBtn").setAttribute("aria-label", "Abort");
-				I("shareArea").style.display = "none";
+				if (window.ClassicChrome) ClassicChrome.setMainButtonLabel("abort");
+				else I("startStopBtn").setAttribute("aria-label", "Abort");
 				I("server").disabled = true;
 				s.onupdate = function (data) {
 					uiData = data;
 				};
 				s.onend = function (aborted) {
 					I("startStopBtn").className = "";
-					I("startStopBtn").setAttribute("aria-label", "Start");
+					if (window.ClassicChrome) ClassicChrome.setMainButtonLabel("start");
+					else I("startStopBtn").setAttribute("aria-label", "Start");
 					I("server").disabled = false;
+					/** 本机 IP 与校园网来源分类仅在测速完成后展示（中止则清空） */
+					var ipRaw = !aborted && uiData && uiData.clientIp ? uiData.clientIp : "";
+					if (window.ClassicChrome && typeof ClassicChrome.setClientIp === "function") {
+						ClassicChrome.setClientIp(ipRaw);
+					} else {
+						I("ip").textContent = ipRaw;
+					}
 					updateUI(true);
-					if (!aborted) {
-						//if testId is present, show sharing panel, otherwise do nothing
-						try {
-							var testId = uiData.testId;
-							if (testId != null) {
-								var shareURL = window.location.href.substring(0, window.location.href.lastIndexOf("/")) + "/results/?id=" + testId;
-								I("resultsImg").src = shareURL;
-								I("resultsURL").value = shareURL;
-								I("testId").innerHTML = testId;
-								I("shareArea").style.display = "";
-							}
-						} catch (e) { }
+					if (!aborted && window.ClassicChrome && typeof ClassicChrome.loadRecentTestsTable === "function") {
+						ClassicChrome.loadRecentTestsTable();
 					}
 				};
 				s.start();
@@ -174,7 +210,6 @@
 			if (!forced && s.getState() != 3) return;
 			if (uiData == null) return;
 			var status = uiData.testState;
-			I("ip").textContent = uiData.clientIp;
 			I("dlText").textContent = (status == 1 && uiData.dlStatus == 0) ? "..." : format(uiData.dlStatus);
 			drawMeter(I("dlMeter"), mbpsToAmount(Number(uiData.dlStatus * (status == 1 ? oscillate() : 1))), meterBk, dlColor, Number(uiData.dlProgress), progColor);
 			I("ulText").textContent = (status == 3 && uiData.ulStatus == 0) ? "..." : format(uiData.ulStatus);
@@ -200,7 +235,8 @@
 			I("ulText").textContent = "";
 			I("pingText").textContent = "";
 			I("jitText").textContent = "";
-			I("ip").textContent = "";
+			if (window.ClassicChrome && typeof ClassicChrome.setClientIp === "function") ClassicChrome.setClientIp("");
+			else I("ip").textContent = "";
 		}
 	</script>
 	<style type="text/css">
@@ -220,6 +256,39 @@
 
 		h1 {
 			color: #404040;
+		}
+
+		.site-branding {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			gap: 0.35rem;
+			padding: 0.5rem 0.75rem 0;
+			max-width: 100%;
+			box-sizing: border-box;
+		}
+
+		.site-branding .site-brand-logo {
+			display: block;
+			width: auto;
+			height: auto;
+			max-width: min(100%, 36rem);
+			max-height: clamp(2.5rem, 11vw, 4.5rem);
+			object-fit: contain;
+		}
+
+		@media (min-width: 48em) {
+			.site-branding .site-brand-logo {
+				max-height: clamp(3rem, 8vw, 5rem);
+				max-width: min(100%, 40rem);
+			}
+		}
+
+		.site-branding .site-brand-title {
+			margin: 0;
+			font-size: clamp(1rem, 3.5vw, 1.35rem);
+			font-weight: 600;
 		}
 
 		#loading {
@@ -250,8 +319,8 @@
 		}
 
 		#startStopBtn {
-			display: inline-block;
-			margin: 0 auto;
+			display: block;
+			margin: 1.6em auto 1.1em auto;
 			color: #6060AA;
 			background-color: rgba(0, 0, 0, 0);
 			border: 0.15em solid #6060FF;
@@ -277,14 +346,6 @@
 			color: #FFFFFF;
 		}
 
-		#startStopBtn:before {
-			content: "Start";
-		}
-
-		#startStopBtn.running:before {
-			content: "Abort";
-		}
-
 		#serverArea {
 			margin-top: 1em;
 		}
@@ -296,7 +357,7 @@
 
 		#test {
 			margin-top: 2em;
-			margin-bottom: 12em;
+			margin-bottom: 2.2em;
 		}
 
 		div.testArea {
@@ -375,18 +436,100 @@
 			margin: 0 auto;
 		}
 
-		#shareArea {
+		#ipArea {
+			margin-top: 1.25em;
+			text-align: center;
+			max-width: 42em;
+			margin-left: auto;
+			margin-right: auto;
+		}
+
+		#recentTestsPanel {
 			width: 95%;
 			max-width: 40em;
 			margin: 0 auto;
 			margin-top: 2em;
+			text-align: center;
 		}
 
-		#shareArea>* {
-			display: block;
+		#recentTestsPanel h3 {
+			font-size: 1.15em;
+			font-weight: 600;
+			color: #404040;
+			margin: 0 0 0.6em 0;
+		}
+
+		.recent-tests-status {
+			font-size: 0.85em;
+			color: #a04040;
+			margin: 0 0 0.5em 0;
+		}
+
+		.recent-tests-status--hidden {
+			display: none;
+		}
+
+		.recent-tests-scroll {
+			overflow-x: auto;
+			text-align: center;
+			border: 1px solid #d8d8d8;
+			border-radius: 0.35em;
+			background: #fafafa;
+		}
+
+		.recent-tests-table {
 			width: 100%;
-			height: auto;
-			margin: 0.25em 0;
+			border-collapse: collapse;
+			font-size: 0.88em;
+		}
+
+		.recent-tests-table th,
+		.recent-tests-table td {
+			padding: 0.45em 0.55em;
+			border-bottom: 1px solid #e4e4e4;
+			vertical-align: middle;
+			text-align: center;
+		}
+
+		.recent-tests-table th {
+			background: #ececec;
+			font-weight: 600;
+			color: #303030;
+			white-space: nowrap;
+		}
+
+		.recent-tests-table tbody tr:last-child td {
+			border-bottom: none;
+		}
+
+		.recent-tests-empty {
+			text-align: center;
+			color: #707070;
+			padding: 1em !important;
+		}
+
+		html[data-theme="dark"] #recentTestsPanel h3 {
+			color: #e8e8e8;
+		}
+
+		html[data-theme="dark"] .recent-tests-scroll {
+			border-color: #444;
+			background: #2a2a2a;
+		}
+
+		html[data-theme="dark"] .recent-tests-table th,
+		html[data-theme="dark"] .recent-tests-table td {
+			border-bottom-color: #444;
+			color: #eaeaea;
+		}
+
+		html[data-theme="dark"] .recent-tests-table th {
+			background: #333;
+			color: #f0f0f0;
+		}
+
+		html[data-theme="dark"] .recent-tests-empty {
+			color: #b0b0b0;
 		}
 
 		#privacyPolicy {
@@ -419,6 +562,25 @@
 
 		div.closePrivacyPolicy a.privacy {
 			padding: 1em 3em;
+		}
+
+		.site-footer-notice {
+			margin: 2em auto 0 auto;
+			max-width: 40em;
+			padding: 0 1.5em;
+			font-size: 0.85em;
+			line-height: 1.45;
+			color: #707070;
+			text-align: center;
+		}
+
+		html[data-theme="dark"] .site-footer-notice {
+			color: #b0b0b0;
+		}
+
+		.site-footer-notice:empty,
+		.site-footer-notice.site-footer-notice--hidden {
+			display: none;
 		}
 
 		@media all and (max-width:40em) {
@@ -459,132 +621,246 @@
 			}
 		}
 
-		@media all and (prefers-color-scheme: dark) {
+		html[data-theme="dark"],
+		html[data-theme="dark"] body,
+		html[data-theme="dark"] #loading {
+			background: #202020;
+			color: #F4F4F4;
+			color-scheme: dark;
+		}
 
-			html,
-			body,
-			#loading {
-				background: #202020;
-				color: #F4F4F4;
-				color-scheme: dark;
-			}
+		html[data-theme="dark"] h1,
+		html[data-theme="dark"] .site-branding .site-brand-title {
+			color: #E0E0E0;
+		}
 
-			h1 {
-				color: #E0E0E0;
-			}
+		html[data-theme="dark"] a {
+			color: #9090FF;
+		}
 
-			a {
-				color: #9090FF;
-			}
+		html[data-theme="dark"] #privacyPolicy {
+			background: #000000;
+		}
 
-			#privacyPolicy {
-				background: #000000;
-			}
 
-			#resultsImg {
-				filter: invert(1);
-			}
+		/* 右上角工具栏（仅经典页） */
+		#classic-chrome-toolbar {
+			position: fixed;
+			top: 1rem;
+			right: 1rem;
+			z-index: 10000000;
+			display: flex;
+			flex-direction: row;
+			gap: 8px;
+			align-items: center;
+		}
+
+		/**
+		 * 工具栏图标按钮：对齐参考约 38×38、圆角卡片、细描边
+		 */
+		#classic-chrome-toolbar button.classic-icon-chip {
+			box-sizing: border-box;
+			width: 38px;
+			height: 38px;
+			min-width: 38px;
+			min-height: 38px;
+			padding: 0;
+			margin: 0;
+			border: 1px solid rgba(0, 0, 0, 0.08);
+			border-radius: 10px;
+			background: #ffffff;
+			color: #1a1a1a;
+			box-shadow:
+				0 1px 2px rgba(0, 0, 0, 0.06),
+				0 0 0 1px rgba(0, 0, 0, 0.02);
+			cursor: pointer;
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			line-height: 0;
+			font-size: 0;
+			-webkit-tap-highlight-color: transparent;
+		}
+
+		html[data-theme="dark"] #classic-chrome-toolbar button.classic-icon-chip {
+			background: #2c2c2e;
+			color: #f2f2f7;
+			border-color: rgba(255, 255, 255, 0.12);
+			box-shadow:
+				0 1px 2px rgba(0, 0, 0, 0.45),
+				0 0 0 1px rgba(255, 255, 255, 0.04);
+		}
+
+		#classic-chrome-toolbar button.classic-icon-chip:hover {
+			background: #fafafa;
+			border-color: rgba(0, 0, 0, 0.12);
+		}
+
+		html[data-theme="dark"] #classic-chrome-toolbar button.classic-icon-chip:hover {
+			background: #3a3a3c;
+			border-color: rgba(255, 255, 255, 0.16);
+		}
+
+		#classic-chrome-toolbar button.classic-icon-chip:active {
+			transform: scale(0.96);
+		}
+
+		#classic-chrome-toolbar #classic-theme-toggle svg {
+			width: 20px;
+			height: 20px;
+		}
+
+		/**
+		 * 语言切换按钮：由 html[data-lang] 驱动，中文界面显示 EN，英文界面显示 CN
+		 */
+		#classic-chrome-toolbar #classic-lang-toggle.classic-lang-btn {
+			font-size: 12px;
+			line-height: 1;
+			font-weight: 700;
+			letter-spacing: 0.04em;
+			font-family: "Segoe UI", Roboto, Arial, sans-serif;
+		}
+
+		#classic-lang-toggle .classic-lang-btn__label {
+			display: inline-block;
+			transform: translateY(0.5px);
+			font-size: 0;
+			line-height: 1;
+		}
+
+		#classic-lang-toggle .classic-lang-btn__label::after {
+			content: "EN";
+			font-size: 12px;
+			font-weight: 700;
+			letter-spacing: 0.04em;
+		}
+
+		html[data-lang="en"] #classic-lang-toggle .classic-lang-btn__label::after {
+			content: "CN";
+		}
+
+		#classic-chrome-toolbar .classic-icon--hidden {
+			display: none !important;
 		}
 	</style>
 	<title>LibreSpeed</title>
 </head>
 
 <body onload="initServers()">
-	<h1>LibreSpeed</h1>
+	<div id="classic-chrome-toolbar" role="toolbar" aria-label="Display options">
+		<button type="button" id="classic-theme-toggle" class="classic-icon-chip" aria-pressed="false"
+			aria-label="Switch to dark mode" title="Switch to dark mode">
+			<svg id="classic-theme-icon-sun" class="classic-icon--hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+				stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<circle cx="12" cy="12" r="4" />
+				<path
+					d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+			</svg>
+			<svg id="classic-theme-icon-moon" viewBox="0 0 24 24" fill="none"
+				stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+				aria-hidden="true">
+				<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+			</svg>
+		</button>
+		<button type="button" id="classic-lang-toggle" class="classic-icon-chip classic-lang-btn" aria-label="Switch language"
+			title="Switch language (CN / EN)">
+			<span class="classic-lang-btn__label" aria-hidden="true"></span>
+		</button>
+	</div>
+	<header class="site-branding">
+		<img class="site-brand-logo" alt="" decoding="async" style="display:none" />
+		<h1 class="site-brand-title" id="site-brand-title" data-site-title-en="__LIBRESPEED_TITLE_EN__"
+			data-site-title-zh="__LIBRESPEED_TITLE_ZH__">__LIBRESPEED_TITLE_VISIBLE__</h1>
+	</header>
 	<div id="loading" class="visible">
-		<p id="message"><span class="loadCircle"></span>Selecting a server...</p>
+		<p id="message"><span class="loadCircle"></span><span data-i18n="loadingSelectServer">Selecting a server...</span></p>
 	</div>
 	<div id="testWrapper" class="hidden">
-		<button id="startStopBtn" onclick="startStop()" aria-label="Start"></button><br />
-		<a class="privacy" href="#" onclick="I('privacyPolicy').style.display=''">Privacy</a>
+		<button type="button" id="startStopBtn" onclick="startStop()" aria-label="Start">Start</button><br />
 		<div id="serverArea">
-			Server: <select id="server" onchange="s.setSelectedServer(SPEEDTEST_SERVERS[this.value])"></select>
+			<span data-i18n="serverLabel">Server:</span> <select id="server" onchange="s.setSelectedServer(SPEEDTEST_SERVERS[this.value])"></select>
 		</div>
 		<div id="test">
 			<div class="testGroup">
 				<div class="testArea2">
-					<div class="testName">Ping</div>
+					<div class="testName" data-i18n="ping">Ping</div>
 					<div id="pingText" class="meterText" style="color:#AA6060"></div>
 					<div class="unit">ms</div>
 				</div>
 				<div class="testArea2">
-					<div class="testName">Jitter</div>
+					<div class="testName" data-i18n="jitter">Jitter</div>
 					<div id="jitText" class="meterText" style="color:#AA6060"></div>
 					<div class="unit">ms</div>
 				</div>
 			</div>
 			<div class="testGroup">
 				<div class="testArea">
-					<div class="testName">Download</div>
+					<div class="testName" data-i18n="download">Download</div>
 					<canvas id="dlMeter" class="meter"></canvas>
 					<div id="dlText" class="meterText"></div>
-					<div class="unit">Mbit/s</div>
+					<div class="unit" data-i18n="unitMbps">Mbit/s</div>
 				</div>
 				<div class="testArea">
-					<div class="testName">Upload</div>
+					<div class="testName" data-i18n="upload">Upload</div>
 					<canvas id="ulMeter" class="meter"></canvas>
 					<div id="ulText" class="meterText"></div>
-					<div class="unit">Mbit/s</div>
+					<div class="unit" data-i18n="unitMbps">Mbit/s</div>
 				</div>
 			</div>
 			<div id="ipArea">
 				<span id="ip"></span>
 			</div>
-			<div id="shareArea" style="display:none">
-				<h3>Share results</h3>
-				<p>Test ID: <span id="testId"></span></p>
-				<input type="text" value="" id="resultsURL" readonly="readonly"
-					onclick="this.select();this.focus();this.select();document.execCommand('copy');alert('Link copied')" />
-				<img src="" id="resultsImg" />
+			<div id="recentTestsPanel" class="recent-tests-panel">
+				<h3 data-i18n="recentTestsTitle">Recent tests (last 7 days)</h3>
+				<p id="recentTestsStatus" class="recent-tests-status recent-tests-status--hidden" aria-live="polite"></p>
+				<div class="recent-tests-scroll">
+					<table class="recent-tests-table">
+						<thead>
+							<tr id="recentTestsHead"></tr>
+						</thead>
+						<tbody id="recentTestsBody"></tbody>
+					</table>
+				</div>
 			</div>
 		</div>
-		<a href="index.html?design=new">Try the modern design</a><br>
-		<a href="https://github.com/librespeed/speedtest">Source code</a>
+		<p id="site-footer-notice" class="site-footer-notice" data-site-footer-en="__LIBRESPEED_FOOTER_EN__"
+			data-site-footer-zh="__LIBRESPEED_FOOTER_ZH__">__LIBRESPEED_FOOTER_VISIBLE__</p>
 	</div>
 	<div id="privacyPolicy" style="display:none">
-		<h2>Privacy Policy</h2>
-		<p>This HTML5 speed test server is configured with telemetry enabled.</p>
-		<h4>What data we collect</h4>
-		<p>
-			At the end of the test, the following data is collected and stored:
+		<h2 data-i18n="privacyTitle">Privacy Policy</h2>
+		<p data-i18n="privacyIntro">This HTML5 speed test server is configured with telemetry enabled.</p>
+		<h4 data-i18n="privacyHWhat">What data we collect</h4>
+		<p data-i18n="privacyCollectLead">At the end of the test, the following data is collected and stored:</p>
 		<ul>
-			<li>Test ID</li>
-			<li>Time of testing</li>
-			<li>Test results (download and upload speed, ping and jitter)</li>
-			<li>IP address</li>
-			<li>ISP information</li>
-			<li>Approximate location (inferred from IP address, not GPS)</li>
-			<li>User agent and browser locale</li>
-			<li>Test log (contains no personal information)</li>
+			<li data-i18n="privacyLi1">Test ID</li>
+			<li data-i18n="privacyLi2">Time of testing</li>
+			<li data-i18n="privacyLi3">Test results (download and upload speed, ping and jitter)</li>
+			<li data-i18n="privacyLi4">IP address</li>
+			<li data-i18n="privacyLi5">ISP information</li>
+			<li data-i18n="privacyLi6">Approximate location (inferred from IP address, not GPS)</li>
+			<li data-i18n="privacyLi7">User agent and browser locale</li>
+			<li data-i18n="privacyLi8">Test log (contains no personal information)</li>
 		</ul>
-		</p>
-		<h4>How we use the data</h4>
-		<p>
-			Data collected through this service is used to:
+		<h4 data-i18n="privacyHUse">How we use the data</h4>
+		<p data-i18n="privacyUseLead">Data collected through this service is used to:</p>
 		<ul>
-			<li>Allow sharing of test results (sharable image for forums, etc.)</li>
-			<li>To improve the service offered to you (for instance, to detect problems on our side)</li>
+			<li data-i18n="privacyUseLi1">Allow sharing of test results (sharable image for forums, etc.)</li>
+			<li data-i18n="privacyUseLi2">To improve the service offered to you (for instance, to detect problems on our side)</li>
 		</ul>
-		No personal information is disclosed to third parties.
-		</p>
-		<h4>Your consent</h4>
-		<p>
-			By starting the test, you consent to the terms of this privacy policy.
-		</p>
-		<h4>Data removal</h4>
-		<p>
-			If you want to have your information deleted, you need to provide either the ID of the test or your IP
-			address. This is the only way to identify your data, without this information we won't be able to comply
-			with your request.<br /><br />
-			Contact this email address for all deletion requests: 
-			<a href="mailto:PUT@YOUR_EMAIL.HERE">TO BE FILLED BY DEVELOPER</a>.
-		</p>
+		<p data-i18n="privacyNoShare">No personal information is disclosed to third parties.</p>
+		<h4 data-i18n="privacyHConsent">Your consent</h4>
+		<p data-i18n="privacyConsent">By starting the test, you consent to the terms of this privacy policy.</p>
+		<h4 data-i18n="privacyHRemoval">Data removal</h4>
+		<p data-i18n="privacyRemoval">If you want to have your information deleted, you need to provide either the ID of the test or your IP address. This is the only way to identify your data, without this information we won't be able to comply with your request.</p>
+		<p><span data-i18n="privacyRemovalContact">Contact this email address for all deletion requests:</span>
+			<a href="mailto:PUT@YOUR_EMAIL.HERE" data-i18n="privacyEmailPlaceholder">TO BE FILLED BY DEVELOPER</a></p>
 		<br /><br />
 		<div class="closePrivacyPolicy">
-			<a class="privacy" href="#" onclick="I('privacyPolicy').style.display='none'">Close</a>
+			<a class="privacy" href="#" onclick="I('privacyPolicy').style.display='none'" data-i18n="privacyClose">Close</a>
 		</div>
 		<br />
 	</div>
+	<script type="text/javascript" src="site-config.js" defer></script>
 </body>
 
 </html>

@@ -1,0 +1,16 @@
+{
+  "_readme": "空白通用模板：把本文件所在目录复制为学校的部署目录（如 docker/site/），填写下列字段后挂载使用。字段完整示例见 docker/site-config.example.json，详细说明见仓库 README.md「二开说明」与 docker/test/README.md。logo/icon 留空则不显示图片；ipSegments/serverList 留空表示无网段标签、单机节点。",
+  "default": {
+    "name": "LibreSpeed",
+    "titleZh": "LibreSpeed 网络测速",
+    "titleEn": "LibreSpeed Speed Test",
+    "footerZh": "",
+    "footerEn": "",
+    "logo": "",
+    "icon": ""
+  },
+  "privacyEmail": "",
+  "ipSegments": [],
+  "recentColumns": ["time", "clientIp", "dl", "ul"],
+  "serverList": []
+}
